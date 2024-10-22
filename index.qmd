@@ -1,0 +1,405 @@
+---
+title: "`airpurifyr`: Open Air Quality in R"
+author: M. J. Lydeamore, D. Wu, J. P. Lakshika
+date: today
+execute:
+  cache: true
+  echo: true
+format:
+    presentation-revealjs+letterbox:
+        fig-align: center
+---
+
+```{css}
+#| echo: false
+figcaption {
+    text-align: center;
+}
+
+.center {
+  text-align: center;
+}
+```
+
+```{r}
+#| label: load-packages
+#| echo: false
+#| message: false
+#| warning: false
+
+library(airpurifyr)
+library(weatherOz)
+library(dplyr)
+library(ggplot2)
+library(tsibble)
+library(imputeTS)
+library(lubridate)
+
+library(patchwork)
+```
+
+## Air Quality
+
+All sorts of processes release particles into the air
+
+These measurements together form "air quality".
+
+::: {.fragment}
+Has been linked with health conditions, life expectancy, mental conditions, poorer economic outcomes, global development indexes...
+:::
+
+## Air Quality {.incremental}
+
+Typical measurements:
+
+* `pm2.5`/`pm5`: Particles that are 2.5/5 microns. Typically come from fires, industry, car exhausts etc
+* `so2`: Sulfur Dioxide. Typically oil refineries, diesel vehicles, coal power stations
+* `o3`: Ozone. Typically bushfires, power stations. We want ozone but not too much!
+* `no2`: Nitrogen dioxide. Typically car exhausts.
+* `co`: Carbon monoxide. Typically Wood smoke, car exhausts.
+
+## Uses
+
+### Public Health
+
+::: {.incremental}
+
+* Association of Changes in Air Quality With Incident Asthma in Children in California, 1993-2014 (Garcia et. al, JAMA 2019)
+* Uncertainty and Variability in Health-Related Damages from Coal-Fired Power Plants in the United States (Levy et. al, Risk Analysis 2009)
+
+:::
+
+## Uses
+
+### Economics
+
+::: {.incremental}
+
+* A cost-effectiveness analysis of alternative air quality control strategies (Atkinson & Lewis, Journal of Environmental Economics and Management **1974**)
+* Cost of economic growth: Air pollution and health expenditure (Chen & Chen, Science of the Total Environment 2021)
+
+:::
+
+::: {.fragment}
+...and more
+:::
+
+## Air Quality
+
+So people need this. But how?
+
+* Ad-hoc
+* Single dataset/source
+* Range of dates/times
+* "Whatever is available"
+
+## So how is it collected?
+
+Some (in this case 61%) governments have programs to collect this data. Much of the global data is sought from citizen science projects.
+
+![An air quality sensor](images/monitor.png){fig-align="center"}
+
+
+## OpenAQ
+
+[OpenAQ](www.openaq.org) is an environmental tech nonprofit.
+
+Aggregate and harmonize open air quality data from across the globe onto an open-source, open-access data platform
+
+Freely available API and [data explorer](https://explore.openaq.org/)
+
+## The package
+
+`airpurifyr` brings this API into R.
+
+* Uses `httr` (will one day be ported)
+* `v2` OpenAQ API (deprecated 18 days ago 😭)
+* Requires a free API key
+
+## Package example
+
+API effectively works on _locations_ and _measurements_
+
+```{r}
+australia_measurements <- get_measurements_for_location(
+  country = "AU",
+  max_observations = 1000,
+  date_from = lubridate::ymd("2020-01-01"),
+  date_to = lubridate::ymd("2020-01-14"),
+  parameter = "pm25"
+)
+
+australia_measurements
+```
+
+## Package example
+
+::: {.callout-important}
+You will need to aggregate this data - sensors often report times to the second and may be slightly off!
+
+`lubridate::floor_date` is great for this
+:::
+
+## Package example
+
+```{r}
+#| label: filter-locations
+locations_of_interest <- australia_measurements |>
+  # East coast of Australia (roughly)
+  dplyr::filter(long > 141, lat < -31) |>
+  dplyr::distinct(location) |>
+  dplyr::pull()
+
+au_east_coast_2020 <- get_measurements_for_location(
+  country = "AU",
+  location = locations_of_interest,
+  max_observations = 10000,
+  date_from = lubridate::ymd("2019-12-01"),
+  date_to = lubridate::ymd("2020-02-01"),
+  parameter = "pm25"
+)
+```
+
+## Package example
+
+```{r}
+#| output-location: column
+#| fig-width: 6
+states <- ozmaps::ozmap_states |>
+  filter(NAME %in% c("New South Wales", "Victoria"))
+
+stations <- au_east_coast_2020 |>
+  distinct(lat, long)
+
+ggplot(states) +
+  geom_sf() +
+  geom_point(
+    aes(x = long, y = lat), 
+    data = stations
+  ) +
+  theme_bw() +
+  labs(x="Longitude", y="Latitude") +
+  coord_sf()
+```
+
+## Examples
+
+```{r}
+melb_weather <- get_data_drill(
+  latitude = -37.8,
+  longitude = 145,
+  start_date = "20200101",
+  end_date = "20200630",
+  values = "all"
+)
+x <- get_data_drill(
+  latitude = -37.8,
+  longitude = 145,
+  start_date = "20200701",
+  end_date = "20201231",
+  values = "all"
+)
+melb_weather <- bind_rows(melb_weather, x)
+```
+
+## Examples
+
+
+
+```{r}
+#| echo: false
+#| fig-align: center
+
+melb_air_data <- readr::read_csv("data/melb_temp_air.csv")
+
+ggplot(melb_air_data, aes(x=mslp, y=o3)) +
+  geom_point() +
+  geom_smooth(se = FALSE) +
+  scale_y_log10() +
+  labs(x="Mean sea-level pressure (hPA)", y = "Ozone")
+```
+
+::: {.fragment}
+High pressure $\rightarrow$ temperature inversion $\rightarrow$ more ozone loss
+:::
+
+# Industrial fires
+
+Thanh Cuong Nugyen & Arun Krishnasamy
+
+## Industrial fires
+
+On July 11, there was a major factory fire in Brooklyn.
+
+::: {.fragment}
+```{r}
+#| echo: false
+#| fig-align: center
+#| fig-width: 14
+au_melb_west_2024 <- readr::read_csv("data/au_melb_west_2024.csv")
+
+mel_pm_25 <- au_melb_west_2024 |> 
+  filter(parameter == "pm25")
+
+mel_pm_10 <- au_melb_west_2024 |> 
+  filter(parameter == "pm10")
+
+melpm25_data_ts <- mel_pm_25 |>
+  select(date_utc, parameter, value, location) |>
+  as_tsibble(index = date_utc, key = location)
+
+melpm10_data_ts <- mel_pm_10 |>
+  select(date_utc, parameter, value, location) |>
+  as_tsibble(index = date_utc, key = location)
+
+melpm25_data_ts_filled <- melpm25_data_ts |>
+  mutate(value = 
+    na_kalman(value))
+
+melpm10_data_ts_filled <- melpm10_data_ts |>
+  mutate(value = 
+    na_kalman(value))
+
+melpm25_data_ts_filled <- melpm25_data_ts_filled |>
+  mutate(date_utc = with_tz(date_utc, "Australia/Melbourne"))
+
+melpm10_data_ts_filled <- melpm10_data_ts_filled |>
+  mutate(date_utc = with_tz(date_utc, "Australia/Melbourne"))
+
+bind_rows(
+  melpm25_data_ts_filled |>
+    filter(date_utc >= as_datetime("2024-07-09 00:00:00") & date_utc <= as_datetime("2024-07-11 24:00:00")) |>
+    filter(location == "Brooklyn" | location == "Footscray") |>
+    mutate(particulate = "pm2.5") |>
+    as_tibble(),
+  melpm10_data_ts_filled |> 
+    filter(date_utc >= as_datetime("2024-07-09 00:00:00") & date_utc <= as_datetime("2024-07-11 24:00:00")) |>
+    filter(location == "Brooklyn" | location == "Footscray") |>
+    mutate(particulate = "pm10") |>
+    as_tibble()
+) |>
+  ggplot(aes(x = date_utc, y = value)) +
+  geom_rect(aes(xmin = as_datetime("2024-07-10 11:20:00"),
+                xmax = as_datetime("2024-07-11 00:00:00"),
+                ymin = -Inf, ymax = Inf),
+            fill = "lightgrey", alpha = 0.3) +
+  geom_line() +
+  labs(x = "Date",
+       y = "Value") +
+  scale_x_datetime(date_breaks = "1 day",  
+                   date_labels = "%b:%d",
+                   sec.axis =dup_axis(
+                     name = "Time",
+                     breaks = seq(as_datetime("2024-07-09 00:00:00"), as_datetime("2024-09-27 24:00:00"), by = "8 hour"),
+                     labels = format(seq(as_datetime("2024-07-09 00:00:00"), as_datetime("2024-09-27 24:00:00"), by = "8 hour"), "%H:%M")
+                   )) +
+  theme(aspect.ratio = 0.2) +
+  facet_grid(particulate~location, scales = "free_y")
+
+```
+:::
+
+# Nearby sensors
+
+Pooja Rejendran Raju & Thi My Ngoc Tran
+
+## Nearby sensors
+
+We can check geographical coherence
+
+
+```{r}
+#| echo: false
+#| fig-align: center
+original_df <- readr::read_csv("data/original_df.csv")
+alp_gee <- original_df |>
+  filter(location %in% c("Alphington", "Geelong South"), 
+         date_utc != as.POSIXct("2024-09-01 00:00:00", tz = "UTC")) |>
+  arrange(date_utc)
+
+data_wider <- alp_gee |> 
+  select(-unit) |>
+  tidyr::pivot_wider(
+    names_from = parameter,
+    values_from = value)
+
+aggregate_data <- data_wider |>
+  mutate(date = as.Date(date_utc)) |>
+  group_by(date, location) |>
+  summarise(across(c("pm25", "pm10", "so2", "o3", "no2", "co"), mean, na.rm = TRUE)) 
+
+wider_form <- aggregate_data |>
+  select(date, location, pm25, pm10) |>
+  tidyr::pivot_wider(
+    names_from = location,
+    values_from = c(pm25, pm10)
+  ) |>
+  janitor::clean_names()
+
+p1 <- wider_form |>
+  ggplot(aes(x = pm25_alphington, y = pm25_geelong_south)) +
+  geom_point() +
+  geom_abline() +
+  labs(x="pm10 Alphington", y = "pm10 Geelong South")
+
+p2 <- wider_form |>
+  ggplot(aes(x=pm10_alphington, y = pm10_geelong_south)) +
+  geom_point() + geom_abline() +
+  labs(x="pm10 Alphington", y = "pm10 Geelong South")
+
+p1 + p2
+```
+
+# Rush hour
+
+Namandeep Kaur Saluja & Rowshni Farnaz Fatema
+
+## Rush hour
+
+Can we pick up extra pollutants from the weekday "rush-hour" in Melbourne CBD?
+
+```{r}
+#| echo: false
+#| fig-align: center
+melbourne_data <- readRDS("data/melb_2022.rds")
+
+mel_clean_data <- melbourne_data |>
+  select(-location_id)
+
+melbourne_data_wide <- mel_clean_data |>
+  tidyr::pivot_wider(names_from = parameter, values_from = value)
+
+peak_hours_data <- melbourne_data_wide |>
+  mutate(time_of_day = hour(date_utc)) |>
+  mutate(rush_period = case_when(
+    time_of_day %in% 7:9 | time_of_day %in% 17:19 ~ "Peak",     # Peak hours (7-9 AM, 5-7 PM)
+    TRUE ~ "Off-Peak"                                            # All other hours
+  ))
+
+peak_hours_data <- peak_hours_data |>
+  mutate(day_of_week = wday(date_utc, label = TRUE))
+
+peak_hours_data |>
+  mutate(
+    weekend = day_of_week %in% c("Sat", "Sun")
+  ) |>
+    filter(rush_period == "Peak", location == "Melbourne CBD") |>
+    mutate(date = lubridate::floor_date(date_utc, unit = "month")) |>
+    ggplot(aes(x=date, y = pm25, fill = weekend, group = interaction(date, weekend))) +
+    geom_boxplot() +
+    labs(x="Month", y = "pm2.5", fill = "Weekend")
+```
+
+## Summary
+
+* OpenAQ gives reasonably clean air quality data
+* `airpurifyr` helps bring this into R
+* Plenty of hypotheses ready to explore
+
+Next steps:
+
+* `v3` API
+* `httr2`
+* More convenience cleaning/aggregating
+
+Available at [https://github.com/numbats/airpurifyr](https://github.com/numbats/airpurifyr)
