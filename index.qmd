@@ -143,6 +143,24 @@ You will need to aggregate this data - sensors often report times to the second 
 ## Package example
 
 ```{r}
+#| echo: false
+#| fig-align: center
+all_pars <- get_measurements_for_location(
+  country = "AU",
+  max_observations = 10000,
+  date_from = lubridate::ymd("2020-01-01"),
+  date_to = lubridate::ymd("2020-01-05")
+)
+# Put different pollutions types in wide form
+all_pars_wide <- all_pars |>
+  tidyr::pivot_wider(names_from = parameter, values_from = value)
+# Check missingness
+visdat::vis_dat(all_pars_wide)
+```
+
+## Package example
+
+```{r}
 #| label: filter-locations
 locations_of_interest <- australia_measurements |>
   # East coast of Australia (roughly)
