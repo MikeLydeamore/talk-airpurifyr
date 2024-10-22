@@ -313,7 +313,7 @@ We can check geographical coherence
 #| fig-align: center
 original_df <- readr::read_csv("data/original_df.csv")
 alp_gee <- original_df |>
-  filter(location %in% c("Alphington", "Geelong South"), 
+  filter(location %in% c("Brooklyn", "Footscray"), 
          date_utc != as.POSIXct("2024-09-01 00:00:00", tz = "UTC")) |>
   arrange(date_utc)
 
@@ -326,7 +326,7 @@ data_wider <- alp_gee |>
 aggregate_data <- data_wider |>
   mutate(date = as.Date(date_utc)) |>
   group_by(date, location) |>
-  summarise(across(c("pm25", "pm10", "so2", "o3", "no2", "co"), mean, na.rm = TRUE)) 
+  summarise(across(c("pm25", "pm10"), mean, na.rm = TRUE)) 
 
 wider_form <- aggregate_data |>
   select(date, location, pm25, pm10) |>
@@ -337,15 +337,17 @@ wider_form <- aggregate_data |>
   janitor::clean_names()
 
 p1 <- wider_form |>
-  ggplot(aes(x = pm25_alphington, y = pm25_geelong_south)) +
+  ggplot(aes(x = pm25_brooklyn, y = pm25_footscray)) +
   geom_point() +
   geom_abline() +
-  labs(x="pm10 Alphington", y = "pm10 Geelong South")
+  labs(x="pm2.5 Brooklyn", y = "pm2.5 Footscray") +
+  theme(aspect.ratio = 1)
 
 p2 <- wider_form |>
-  ggplot(aes(x=pm10_alphington, y = pm10_geelong_south)) +
+  ggplot(aes(x=pm10_brooklyn, y = pm10_footscray)) +
   geom_point() + geom_abline() +
-  labs(x="pm10 Alphington", y = "pm10 Geelong South")
+  labs(x="pm10 Brooklyn", y = "pm10 Footscray") +
+  theme(aspect.ratio = 1)
 
 p1 + p2
 ```
