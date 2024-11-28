@@ -1,0 +1,3 @@
+[submodule "talk-healthcare-infections"]
+	path = talk-healthcare-infections
+	url = git@github.com:MikeLydeamore/talk-healthcare-infections.git
